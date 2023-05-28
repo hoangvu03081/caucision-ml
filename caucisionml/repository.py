@@ -23,5 +23,16 @@ def update_project_model(session: Session, project_id: str, model):
 
 
 @repository_method
+def create_default_campaign(session: Session, project_id: str, user_id: str):
+    campaign = models.Campaign(
+        user_id=user_id,
+        project_id=project_id,
+        data_imported=True,
+        name="Default campaign"
+    )
+    session.add(campaign)
+
+
+@repository_method
 def update_project_model_trained(session: Session, project_id: str, value):
     return session.query(models.Project).filter(models.Project.id == project_id).update({'model_trained': value})

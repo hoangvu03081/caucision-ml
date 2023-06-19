@@ -29,8 +29,8 @@ class Project(Base):
     def data_id(self):
         return f"p_{inflection.underscore(str(self.id))}_data"
 
-    def estimation_id(self):
-        return f"p_{inflection.underscore(str(self.id))}_est"
+    def campaign_data_id(self):
+        return f"c_{inflection.underscore(str(self.id))}_data"
 
 
 class Campaign(Base):

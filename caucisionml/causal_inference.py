@@ -9,10 +9,10 @@ from sklearn.preprocessing import OrdinalEncoder
 
 
 def infer_from_project(
-    df: pd.DataFrame,
-    control_promotion: str,
-    data_schema: dict,
-    causal_graph: str,
+        df: pd.DataFrame,
+        control_promotion: str,
+        data_schema: dict,
+        causal_graph: str,
 ) -> (pd.DataFrame, XLearner, OrdinalEncoder, IdentifiedEstimand, CausalModel):
     original_df = df
 
@@ -80,7 +80,7 @@ def infer_from_project(
     est = XLearner(models=LinearRegression())
     est.fit(Y, T, X=X)
 
-    user_effects = original_df[["user_id"]]
+    user_effects = original_df
     prepared_df = original_df.drop(columns=["user_id", "promotion", "outcome"])
     prepared_df = pd.get_dummies(prepared_df[effect_modifier_names])
 
@@ -91,4 +91,33 @@ def infer_from_project(
         )
         user_effects = pd.concat([user_effects, framed_effect], axis=1)
 
-    return user_effects, est, encoder, identified_estimand, model
+    return user_effects, est, encoder, identified_estimand, model, categories
+
+
+def infer_from_campaign_data(df, identified_estimand, categories, causal_model, est):
+    original_df = df
+
+    effect_modifier_names = causal_model._graph.get_effect_modifiers(
+        identified_estimand.treatment_variable, identified_estimand.outcome_variable
+    )
+    observed_common_causes_names = identified_estimand.get_backdoor_variables().copy()
+
+    w_diff_x = [
+        w for w in observed_common_causes_names if w not in effect_modifier_names
+    ]
+
+    if len(w_diff_x) > 0:
+        effect_modifier_names.extend(w_diff_x)
+
+    user_effects = original_df
+    prepared_df = original_df.drop(columns=["user_id"])
+    prepared_df = pd.get_dummies(prepared_df[effect_modifier_names])
+
+    for index, category in enumerate(categories[1:]):
+        effect = est.effect(prepared_df, T1=index + 1)
+        framed_effect = pd.DataFrame(
+            effect, columns=[f"{category} outcome", f"{category} conversion"]
+        )
+        user_effects = pd.concat([user_effects, framed_effect], axis=1)
+
+    return user_effects

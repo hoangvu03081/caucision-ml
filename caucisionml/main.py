@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 
 from typing import Annotated
 
+from .config import settings
 from .message_queue import initialize_celery
 from celery import shared_task
 
@@ -12,6 +13,8 @@ from .causal_inference import infer_from_project, infer_from_campaign_data
 import pickle
 import pandas as pd
 import io
+import requests
+from urllib.parse import urljoin
 
 app = FastAPI()
 celery = initialize_celery()
@@ -35,26 +38,26 @@ def train_model(payload):
 
     scylla_db.save_project_estimation(project.campaign_data_id(), user_effects)
     repo.update_project_model_trained(project.id, True)
-    repo.create_default_campaign(project.id, project.user_id)
+
+    unique_values_dict = user_effects.nunique().to_dict()
+    type_mappings = {'int64': 'int', 'object': 'text', 'float64': 'float'}
+
+    dtypes = user_effects.dtypes.to_dict()
+    data_schema = {k: {'type': type_mappings[str(v)], 'unique_values': unique_values_dict[k]} for k, v in
+                   dtypes.items()}
+
+    data = {
+        'user_id': str(project.user_id),
+        'project_id': str(project.id),
+        'data_schema': data_schema
+    }
+    endpoint = urljoin(settings.API_GATEWAY_URL, "/internal/default_campaign")
+    requests.post(endpoint, json=data)
 
 
 @app.get("/")
 async def root():
     pass
-    # project = repo.find_project('7572ec20-27b9-4bc4-ad69-81ca21562c73')
-    # scylla_db = Scylla()
-    #
-    # df = scylla_db.fetch_project_data(project.data_id())
-    # user_effects, est, encoder, identified_estimand, causal_model = infer_from_project(
-    #     df, project.control_promotion, project.data_schema, project.causal_graph
-    # )
-    # from .scylla import Scylla
-    # project = repo.find_project("d1984510-614c-4bba-893d-52946c72880b")
-    # df = Scylla().fetch_project_data(project.data_id())
-    # user_effects, est, encoder, identified_estimand, model = infer_from_project(
-    #     df, project.control_promotion, project.data_schema, project.causal_graph
-    # )
-    # return project
 
 
 @app.post("/campaign_data")

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     SCYLLA_KEYSPACE: str = "caucision"
     REDIS_URL: str
     CELERY_BROKER_URL: str
+    API_GATEWAY_URL: str
 
 
 settings = Settings()

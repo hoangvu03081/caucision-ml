@@ -18,6 +18,13 @@ def find_project(session: Session, project_id: str):
 
 
 @repository_method
+def find_campaign(session: Session, campaign_id: str):
+    campaign = session.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    session.expunge(campaign)
+    return campaign
+
+
+@repository_method
 def update_project_model(session: Session, project_id: str, model):
     return session.query(models.Project).filter(models.Project.id == project_id).update({'model': model})
 

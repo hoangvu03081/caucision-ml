@@ -1,10 +1,11 @@
-from fastapi import FastAPI, File, Form
+from fastapi import FastAPI, File, Form, Request
 from fastapi.responses import StreamingResponse
 
 from typing import Annotated
 
 from .config import settings
 from .message_queue import initialize_celery
+from .mckp import optimize_campaign
 from celery import shared_task
 
 from . import repository as repo
@@ -12,6 +13,7 @@ from .scylla import Scylla
 from .causal_inference import infer_from_project, infer_from_campaign_data
 import pickle
 import pandas as pd
+import numpy as np
 import io
 import requests
 from urllib.parse import urljoin
@@ -25,7 +27,7 @@ def train_model(payload):
     project = repo.find_project(payload['project_id'])
     scylla_db = Scylla()
 
-    df = scylla_db.fetch_project_data(project.data_id())
+    df = scylla_db.fetch_table(project.data_id())
     user_effects, est, encoder, identified_estimand, causal_model, categories = infer_from_project(
         df, project.control_promotion, project.data_schema, project.causal_graph
     )
@@ -36,7 +38,7 @@ def train_model(payload):
 
     repo.update_project_model(project.id, binary_model_data)
 
-    scylla_db.save_project_estimation(project.campaign_data_id(), user_effects)
+    scylla_db.save_campaign_estimation(project.campaign_data_id(), user_effects)
     repo.update_project_model_trained(project.id, True)
 
     unique_values_dict = user_effects.nunique().to_dict()
@@ -79,7 +81,7 @@ async def upload_campaign_data(
 
     user_effects = infer_from_campaign_data(df, identified_estimand, categories, causal_model, est)
     scylla_db = Scylla()
-    scylla_db.save_project_estimation(campaign_data_id, user_effects)
+    scylla_db.save_campaign_estimation(campaign_data_id, user_effects)
 
     csv_data = io.StringIO()
     user_effects.to_csv(csv_data, index=False)
@@ -91,3 +93,36 @@ async def upload_campaign_data(
     response.headers["Content-Disposition"] = "attachment; filename=data.csv"
 
     return response
+
+
+@app.post("/optimize")
+async def optimize(request: Request) -> list[str | None]:
+    body = await request.json()
+    campaign_id = body['campaign_id']
+    promotion_costs = body['promotion_costs']
+    capacity = body['budget']
+
+    campaign = repo.find_campaign(campaign_id)
+    project = repo.find_project(campaign.project_id)
+
+    model_data = pickle.loads(project.model)
+    categories: list[str | None] = model_data['categories']
+
+    costs = []
+    for category in categories:
+        costs.append(promotion_costs[category])
+
+    scylla_db = Scylla()
+    df = scylla_db.fetch_table(campaign.data_id())
+    category_count = len(categories)
+
+    user_effects = df.iloc[:, 1:(1+(category_count-1)*2)]
+    rows = user_effects.values
+
+    zeros_columns = np.zeros((rows.shape[0], 2))
+    rows = np.hstack((zeros_columns, rows))
+
+    best_indices = optimize_campaign(rows, capacity, costs)
+    categories = np.append(categories, [None])
+
+    return categories[best_indices].tolist()

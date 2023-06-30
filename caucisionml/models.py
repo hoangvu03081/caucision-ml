@@ -45,3 +45,8 @@ class Campaign(Base):
     data_imported = Column(Boolean)
     default = Column(JSONB)
     graph_order = Column(ARRAY(String))
+    optimization_result = Column(BYTEA)
+    optimization_metadata = Column(BYTEA)
+
+    def data_id(self):
+        return f"c_{inflection.underscore(str(self.id))}_data"

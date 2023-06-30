@@ -22,11 +22,11 @@ class Scylla:
         self.cluster = Cluster([settings.SCYLLA_HOST])
         self.session = self.cluster.connect(settings.SCYLLA_KEYSPACE)
 
-    def fetch_project_data(self, project_data_id) -> pd.DataFrame:
-        rows = self.session.execute(f"SELECT * FROM {project_data_id}").all()
+    def fetch_table(self, table_name) -> pd.DataFrame:
+        rows = self.session.execute(f"SELECT * FROM {table_name}").all()
         return pd.DataFrame(rows)
 
-    def save_project_estimation(self, campaign_data_id, df):
+    def save_campaign_estimation(self, campaign_data_id, df):
         schema = df.dtypes.to_dict()
         mapped_schema = valmap(lambda dtype: self.TYPE_MAPPINGS.get(str(dtype)), schema)
         mapped_schema['user_id'] += ' PRIMARY KEY'
